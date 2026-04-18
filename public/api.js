@@ -1,112 +1,195 @@
-const STORAGE_KEY = 'tradingApiBaseUrl';
+var STORAGE_KEY = 'tradingApiBaseUrl';
 
 function normalizeBaseUrl(value) {
-  if (!value) {
+  // Remove empty values
+  if (value === null || value === undefined || value === '') {
     return '';
   }
 
-  return String(value).trim().replace(/\/+$/, '');
+  // Convert to string
+  var stringValue = String(value);
+  
+  // Remove whitespace from both ends
+  stringValue = stringValue.trim();
+  
+  // Remove trailing slashes
+  while (stringValue.charAt(stringValue.length - 1) === '/') {
+    stringValue = stringValue.substring(0, stringValue.length - 1);
+  }
+  
+  return stringValue;
 }
 
 function getInitialBaseUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const queryBaseUrl = params.get('api');
-
+  // Check URL query parameter first
+  var urlParams = new URLSearchParams(window.location.search);
+  var queryBaseUrl = urlParams.get('api');
+  
   if (queryBaseUrl) {
     return normalizeBaseUrl(queryBaseUrl);
   }
 
-  const storedBaseUrl = window.localStorage.getItem(STORAGE_KEY);
+  // Check localStorage next
+  var storedBaseUrl = window.localStorage.getItem(STORAGE_KEY);
   if (storedBaseUrl) {
     return normalizeBaseUrl(storedBaseUrl);
   }
 
+  // Check global config variable
   if (typeof window.__API_BASE_URL__ === 'string' && window.__API_BASE_URL__) {
     return normalizeBaseUrl(window.__API_BASE_URL__);
   }
 
+  // Use current page origin as fallback
   return normalizeBaseUrl(window.location.origin);
 }
 
-let apiBaseUrl = getInitialBaseUrl();
+var apiBaseUrl = getInitialBaseUrl();
 
-export function getApiBaseUrl() {
+function getApiBaseUrl() {
   return apiBaseUrl;
 }
 
-export function setApiBaseUrl(nextBaseUrl) {
-  apiBaseUrl = normalizeBaseUrl(nextBaseUrl);
-  if (apiBaseUrl) {
-    window.localStorage.setItem(STORAGE_KEY, apiBaseUrl);
+function setApiBaseUrl(nextBaseUrl) {
+  var normalized = normalizeBaseUrl(nextBaseUrl);
+  apiBaseUrl = normalized;
+  
+  // Save to localStorage if not empty
+  if (normalized) {
+    window.localStorage.setItem(STORAGE_KEY, normalized);
   }
 }
+
 
 function buildUrl(path) {
-  return new URL(path, `${apiBaseUrl}/`).toString();
+  // Build complete URL by combining base URL with path
+  var completeUrl = apiBaseUrl + '/' + path;
+  // Create URL object to ensure proper formatting
+  var urlObject = new URL(completeUrl);
+  return urlObject.toString();
 }
 
-async function request(path, options = {}) {
-  let response;
-
-  try {
-    response = await fetch(buildUrl(path), {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {})
-      },
-      ...options
-    });
-  } catch (error) {
-    throw new Error(`Network error. Could not reach ${apiBaseUrl}`);
+function request(path, options) {
+  // Set default options if not provided
+  if (!options) {
+    options = {};
   }
 
-  const text = await response.text();
-  let payload = null;
-
-  if (text) {
-    try {
-      payload = JSON.parse(text);
-    } catch (_error) {
-      payload = { raw: text };
+  // Prepare headers
+  var headers = {
+    'Content-Type': 'application/json'
+  };
+  
+  // Add any custom headers from options
+  if (options.headers) {
+    var customHeaders = options.headers;
+    for (var headerKey in customHeaders) {
+      headers[headerKey] = customHeaders[headerKey];
     }
   }
 
-  if (!response.ok) {
-    const message = payload?.error || payload?.message || `Request failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
+  // Build fetch request options
+  var fetchOptions = {
+    headers: headers,
+    method: options.method || 'GET'
+  };
+  
+  // Add body if present
+  if (options.body) {
+    fetchOptions.body = options.body;
   }
 
-  return payload;
+  // Execute fetch and handle response
+  return fetch(buildUrl(path), fetchOptions)
+    .catch(function(error) {
+      // Handle network errors
+      var networkError = new Error('Network error. Could not reach ' + apiBaseUrl);
+      throw networkError;
+    })
+    .then(function(response) {
+      // Read response text
+      return response.text().then(function(text) {
+        return {
+          response: response,
+          text: text
+        };
+      });
+    })
+    .then(function(data) {
+      var response = data.response;
+      var text = data.text;
+      
+      // Parse JSON if response has content
+      var payload = null;
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch (parseError) {
+          payload = { raw: text };
+        }
+      }
+
+      // Check if response status is OK
+      if (!response.ok) {
+        // Extract error message from payload
+        var errorMessage = null;
+        if (payload && payload.error) {
+          errorMessage = payload.error;
+        } else if (payload && payload.message) {
+          errorMessage = payload.message;
+        } else {
+          errorMessage = 'Request failed (' + response.status + ')';
+        }
+
+        // Create error object with details
+        var error = new Error(errorMessage);
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      }
+
+      return payload;
+    });
 }
 
-export const api = {
-  getPairs() {
-    return request('/pairs');
-  },
 
-  getOrderBook(pair) {
-    const query = pair ? `?pair=${encodeURIComponent(pair)}` : '';
-    return request(`/orderbook${query}`);
-  },
+// API object with methods for communicating with the backend
+var api = {};
 
-  getTrades(pair) {
-    const query = pair ? `?pair=${encodeURIComponent(pair)}` : '';
-    return request(`/trades${query}`);
-  },
+api.getPairs = function() {
+  return request('/pairs');
+};
 
-  placeOrder(order) {
-    return request('/order', {
-      method: 'POST',
-      body: JSON.stringify(order)
-    });
-  },
-
-  cancelOrder(orderId) {
-    return request(`/order/${orderId}`, {
-      method: 'DELETE'
-    });
+api.getOrderBook = function(pair) {
+  var query = '';
+  if (pair) {
+    query = '?pair=' + encodeURIComponent(pair);
   }
+  var path = '/orderbook' + query;
+  return request(path);
+};
+
+api.getTrades = function(pair) {
+  var query = '';
+  if (pair) {
+    query = '?pair=' + encodeURIComponent(pair);
+  }
+  var path = '/trades' + query;
+  return request(path);
+};
+
+api.placeOrder = function(order) {
+  var options = {
+    method: 'POST',
+    body: JSON.stringify(order)
+  };
+  return request('/order', options);
+};
+
+api.cancelOrder = function(orderId) {
+  var options = {
+    method: 'DELETE'
+  };
+  var path = '/order/' + orderId;
+  return request(path, options);
 };
