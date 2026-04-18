@@ -51,8 +51,10 @@ function setApiBaseUrl(nextBaseUrl) {
 
 
 function buildUrl(path) {
-  var completeUrl = apiBaseUrl + '/' + path;
-  return new URL(completeUrl).toString();
+  if (path.charAt(0) === '/') {
+    return apiBaseUrl + path;
+  }
+  return apiBaseUrl + '/' + path;
 }
 
 function request(path, options) {
