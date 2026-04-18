@@ -197,10 +197,14 @@ The trading engine is deployed and live on Render:
 
 Access the trading dashboard directly from the link above. All API endpoints are operational.
 
+API base URL (deployed):
+
+- `https://trading-engine-7efm.onrender.com`
+
 Health check:
 
 ```bash
-curl -s http://localhost:3000/health
+curl -s https://trading-engine-7efm.onrender.com/health
 ```
 
 Expected:
@@ -242,24 +246,6 @@ Optional pair filter:
 
 ### `GET /pairs`
 Get configured pairs.
-
-## Matching Logic
-
-### Buy incoming order
-- Matches against lowest sell first
-- Match condition: `sell.price <= buy.price`
-- FIFO for same sell price level
-
-### Sell incoming order
-- Matches against highest buy first
-- Match condition: `buy.price >= sell.price`
-- FIFO for same buy price level
-
-### Fill handling
-- Partial fills supported
-- `remaining` updates after each trade
-- Status transitions: `open` → `partially_filled` → `filled`
-- Filled resting orders removed from order book
 
 ## Frontend Notes
 
