@@ -193,3 +193,6 @@ api.cancelOrder = function(orderId) {
   var path = '/order/' + orderId;
   return request(path, options);
 };
+
+// Export functions and API object for use in other modules
+export { getApiBaseUrl, setApiBaseUrl, api };
