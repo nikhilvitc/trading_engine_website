@@ -1,18 +1,12 @@
 var STORAGE_KEY = 'tradingApiBaseUrl';
 
 function normalizeBaseUrl(value) {
-  // Remove empty values
   if (value === null || value === undefined || value === '') {
     return '';
   }
 
-  // Convert to string
-  var stringValue = String(value);
+  var stringValue = String(value).trim();
   
-  // Remove whitespace from both ends
-  stringValue = stringValue.trim();
-  
-  // Remove trailing slashes
   while (stringValue.charAt(stringValue.length - 1) === '/') {
     stringValue = stringValue.substring(0, stringValue.length - 1);
   }
@@ -21,7 +15,6 @@ function normalizeBaseUrl(value) {
 }
 
 function getInitialBaseUrl() {
-  // Check URL query parameter first
   var urlParams = new URLSearchParams(window.location.search);
   var queryBaseUrl = urlParams.get('api');
   
@@ -29,18 +22,15 @@ function getInitialBaseUrl() {
     return normalizeBaseUrl(queryBaseUrl);
   }
 
-  // Check localStorage next
   var storedBaseUrl = window.localStorage.getItem(STORAGE_KEY);
   if (storedBaseUrl) {
     return normalizeBaseUrl(storedBaseUrl);
   }
 
-  // Check global config variable
   if (typeof window.__API_BASE_URL__ === 'string' && window.__API_BASE_URL__) {
     return normalizeBaseUrl(window.__API_BASE_URL__);
   }
 
-  // Use current page origin as fallback
   return normalizeBaseUrl(window.location.origin);
 }
 
@@ -54,7 +44,6 @@ function setApiBaseUrl(nextBaseUrl) {
   var normalized = normalizeBaseUrl(nextBaseUrl);
   apiBaseUrl = normalized;
   
-  // Save to localStorage if not empty
   if (normalized) {
     window.localStorage.setItem(STORAGE_KEY, normalized);
   }
@@ -62,87 +51,59 @@ function setApiBaseUrl(nextBaseUrl) {
 
 
 function buildUrl(path) {
-  // Build complete URL by combining base URL with path
   var completeUrl = apiBaseUrl + '/' + path;
-  // Create URL object to ensure proper formatting
-  var urlObject = new URL(completeUrl);
-  return urlObject.toString();
+  return new URL(completeUrl).toString();
 }
 
 function request(path, options) {
-  // Set default options if not provided
   if (!options) {
     options = {};
   }
 
-  // Prepare headers
   var headers = {
     'Content-Type': 'application/json'
   };
   
-  // Add any custom headers from options
   if (options.headers) {
-    var customHeaders = options.headers;
-    for (var headerKey in customHeaders) {
-      headers[headerKey] = customHeaders[headerKey];
+    for (var key in options.headers) {
+      headers[key] = options.headers[key];
     }
   }
 
-  // Build fetch request options
   var fetchOptions = {
     headers: headers,
     method: options.method || 'GET'
   };
   
-  // Add body if present
   if (options.body) {
     fetchOptions.body = options.body;
   }
 
-  // Execute fetch and handle response
   return fetch(buildUrl(path), fetchOptions)
     .catch(function(error) {
-      // Handle network errors
-      var networkError = new Error('Network error. Could not reach ' + apiBaseUrl);
-      throw networkError;
+      throw new Error('Network error. Could not reach ' + apiBaseUrl);
     })
     .then(function(response) {
-      // Read response text
       return response.text().then(function(text) {
-        return {
-          response: response,
-          text: text
-        };
+        return { response: response, text: text };
       });
     })
     .then(function(data) {
       var response = data.response;
       var text = data.text;
-      
-      // Parse JSON if response has content
       var payload = null;
+
       if (text) {
         try {
           payload = JSON.parse(text);
-        } catch (parseError) {
+        } catch (e) {
           payload = { raw: text };
         }
       }
 
-      // Check if response status is OK
       if (!response.ok) {
-        // Extract error message from payload
-        var errorMessage = null;
-        if (payload && payload.error) {
-          errorMessage = payload.error;
-        } else if (payload && payload.message) {
-          errorMessage = payload.message;
-        } else {
-          errorMessage = 'Request failed (' + response.status + ')';
-        }
-
-        // Create error object with details
-        var error = new Error(errorMessage);
+        var msg = (payload && payload.error) || (payload && payload.message) || ('Request failed (' + response.status + ')');
+        var error = new Error(msg);
         error.status = response.status;
         error.payload = payload;
         throw error;
@@ -153,7 +114,6 @@ function request(path, options) {
 }
 
 
-// API object with methods for communicating with the backend
 var api = {};
 
 api.getPairs = function() {
@@ -161,38 +121,32 @@ api.getPairs = function() {
 };
 
 api.getOrderBook = function(pair) {
-  var query = '';
+  var path = '/orderbook';
   if (pair) {
-    query = '?pair=' + encodeURIComponent(pair);
+    path += '?pair=' + encodeURIComponent(pair);
   }
-  var path = '/orderbook' + query;
   return request(path);
 };
 
 api.getTrades = function(pair) {
-  var query = '';
+  var path = '/trades';
   if (pair) {
-    query = '?pair=' + encodeURIComponent(pair);
+    path += '?pair=' + encodeURIComponent(pair);
   }
-  var path = '/trades' + query;
   return request(path);
 };
 
 api.placeOrder = function(order) {
-  var options = {
+  return request('/order', {
     method: 'POST',
     body: JSON.stringify(order)
-  };
-  return request('/order', options);
+  });
 };
 
 api.cancelOrder = function(orderId) {
-  var options = {
+  return request('/order/' + orderId, {
     method: 'DELETE'
-  };
-  var path = '/order/' + orderId;
-  return request(path, options);
+  });
 };
 
-// Export functions and API object for use in other modules
 export { getApiBaseUrl, setApiBaseUrl, api };
