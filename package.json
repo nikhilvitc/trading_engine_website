@@ -1,0 +1,13 @@
+{
+  "name": "trading_engine",
+  "version": "1.0.0",
+  "description": "Simplified in-memory trading engine backend",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "uuid": "^11.1.0"
+  }
+}
